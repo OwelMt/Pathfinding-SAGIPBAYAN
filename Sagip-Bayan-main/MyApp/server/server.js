@@ -37,6 +37,8 @@ const barangayStockRoutes = require('./routes/barangayStockRoutes');
 const inventoryRoutes = require('./routes/inventoryRoutes');
 const reliefRequestRoutes = require('./routes/reliefRequestRoutes');
 const reliefReleaseRoutes = require('./routes/reliefReleaseRoutes');
+const barangayCollectionRoutes = require("./routes/barangayCollectionRoutes");
+
 
 const app = express();
 const server = http.createServer(app);
@@ -154,6 +156,7 @@ app.use("/incident", incidentRoutes);
 app.use("/history", historyRoutes);
 app.use("/evacs", evacRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/barangays/collection", barangayCollectionRoutes);
 app.use("/api/barangays", barangayRoutes);
 app.use("/api/drrmo", drrmoRoutes);
 app.use("/api/relief-tracking", reliefTrackingRoutes);

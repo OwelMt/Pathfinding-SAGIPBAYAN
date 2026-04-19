@@ -12,12 +12,30 @@ import MapView, {
   Marker,
   Callout,
   PROVIDER_GOOGLE,
-  Polygon, // ✅ ADDED
+  Polygon,
 } from "react-native-maps";
 import api from "../lib/api";
 import axios from "axios";
 import { MarkerImages, getMarkerImageBySeverity } from "./MapIcon";
-import jaenGeoJSON from "./data/jaen.json"; // ✅ ADDED
+import jaenGeoJSON from "./data/jaen.json";
+import areasData from "./data/area.json";
+
+/* ---------------- BARANGAY COLORS (✅ ADDED) ---------------- */
+const BARANGAY_COLORS = [
+  "#60A5FA", // blue
+  "#34D399", // green
+  "#FBBF24", // yellow
+  "#F87171", // red
+  "#A78BFA", // violet
+  "#FB7185", // rose
+  "#38BDF8", // sky
+  "#4ADE80", // emerald
+  "#FACC15", // amber
+];
+
+function getBarangayColor(index) {
+  return BARANGAY_COLORS[index % BARANGAY_COLORS.length];
+}
 
 /* ---------------- JAEN BOUNDS ---------------- */
 const JAEN_CENTER = { latitude: 15.3274, longitude: 120.9190 };
@@ -40,27 +58,83 @@ const isInside = (lat, lng) =>
 /* ---------------- ZOOM ---------------- */
 const zoomToDelta = (z) => 0.02 * Math.pow(2, 15 - z);
 
-/* ---------------- JAEN OUTLINE (✅ ADDED) ---------------- */
+/* ---------------- JAEN OUTLINE ---------------- */
 function renderJaenBoundary() {
-  if (!jaenGeoJSON?.features) return null;
+  if (!jaenGeoJSON || !jaenGeoJSON.features) return null;
 
-  return jaenGeoJSON.features.map((feature, idx) => {
-    const coords = feature.geometry.coordinates;
-    const polygons =
-      feature.geometry.type === "MultiPolygon" ? coords : [coords];
+  return jaenGeoJSON.features.flatMap((feature, idx) => {
+    if (!feature.geometry || !feature.geometry.coordinates) return [];
 
-    return polygons.map((polygon, pIdx) => (
+    const { type, coordinates } = feature.geometry;
+    console.log("Jaen geometry type:", type);
+
+    let rings = [];
+
+    if (type === "Polygon") {
+      rings = [coordinates[0]];
+    } else if (type === "MultiPolygon") {
+      rings = coordinates.map((polygon) => polygon[0]);
+    } else {
+      return [];
+    }
+
+    return rings.map((ring, pIdx) => (
       <Polygon
         key={`jaen-${idx}-${pIdx}`}
-        coordinates={polygon[0].map((c) => ({
-          latitude: c[1],
-          longitude: c[0],
+        tappable={false}
+        coordinates={ring.map(([lng, lat]) => ({
+          latitude: lat,
+          longitude: lng,
         }))}
         strokeColor="#065F46"
         strokeWidth={2}
         fillColor="transparent"
+        zIndex={11}
       />
     ));
+  });
+}
+
+/* ---------------- YOUR EXISTING FUNCTION (UNCHANGED) ---------------- */
+function renderBarangayBoundaries() {
+  if (!areasData || !areasData.features) return null;
+
+  console.log("Barangay features count:", areasData.features.length);
+
+  return areasData.features.flatMap((feature, idx) => {
+    if (!feature.geometry || !feature.geometry.coordinates) return [];
+
+    const { type, coordinates } = feature.geometry;
+    console.log("Jaen geometry type:", type);
+
+    let rings = [];
+
+    if (type === "Polygon") {
+      rings = [coordinates[0]];
+    } else if (type === "MultiPolygon") {
+      rings = coordinates.map((polygon) => polygon[0]);
+    } else {
+      return [];
+    }
+
+    return rings.map((ring, pIdx) => {
+      console.log("Barangay sample coordinate:", ring[0]);
+
+      return (
+        <Polygon
+          key={`brgy-${idx}-${pIdx}`}
+          tappable={false}
+          coordinates={ring.map(([lng, lat]) => ({
+            latitude: lat,
+            longitude: lng,
+          }))}
+          strokeColor="rgba(255,0,0,1)"
+          strokeWidth={4}
+          fillColor="rgba(255,0,0,0.4)"
+          zIndex={10}
+        />
+      );
+    });
   });
 }
 
@@ -70,9 +144,14 @@ export default function WebMap({
   selected,
   userLocation,
   onIncidentPress,
+  showBarangays = false,
 }) {
   const mapRef = useRef(null);
   const [incidents, setIncidents] = useState([]);
+
+  /* ✅ MongoDB barangays */
+  const [mongoBarangays, setMongoBarangays] = useState(null);
+
   const { width, height } = Dimensions.get("window");
   const aspect = width / height;
 
@@ -105,6 +184,65 @@ export default function WebMap({
     return () => clearInterval(interval);
   }, [fetchIncidents]);
 
+  /* ---------------- FETCH + MERGE MONGODB BARANGAYS ---------------- */
+  useEffect(() => {
+    (async () => {
+      try {
+        console.log("Fetching MongoDB barangay boundaries…");
+        const res = await axios.get(
+          "http://192.168.1.8:8000/api/barangays/collection"
+        );
+
+        const merged = {
+          type: "FeatureCollection",
+          features: res.data.flatMap(fc => fc.features),
+        };
+
+        console.log("✅ Merged barangay features:", merged.features.length);
+        setMongoBarangays(merged);
+      } catch (err) {
+        console.error("MongoDB barangay fetch failed:", err);
+      }
+    })();
+  }, []);
+
+  /* ---------------- RENDER MONGODB BARANGAYS (COLORED) ---------------- */
+  function renderMongoBarangayBoundaries() {
+    if (!showBarangays || !mongoBarangays?.features) return null;
+
+    return mongoBarangays.features.flatMap((feature, idx) => {
+      if (!feature.geometry || !feature.geometry.coordinates) return [];
+
+      const { type, coordinates } = feature.geometry;
+      let rings = [];
+
+      if (type === "Polygon") {
+        rings = [coordinates[0]];
+      } else if (type === "MultiPolygon") {
+        rings = coordinates.map(p => p[0]);
+      } else {
+        return [];
+      }
+
+      const color = getBarangayColor(idx);
+
+      return rings.map((ring, pIdx) => (
+        <Polygon
+          key={`mongo-brgy-${idx}-${pIdx}`}
+          tappable={false}
+          coordinates={ring.map(([lng, lat]) => ({
+            latitude: lat,
+            longitude: lng,
+          }))}
+          strokeColor="#000000"
+          strokeWidth={1.5}
+          fillColor={`${color}AA`}
+          zIndex={999}
+        />
+      ));
+    });
+  }
+
   /* ---------------- HELPERS ---------------- */
   const focusTo = (lat, lng, zoom = 17) => {
     if (!mapRef.current) return;
@@ -123,10 +261,7 @@ export default function WebMap({
         "https://nominatim.openstreetmap.org/reverse",
         { params: { lat, lon: lng, format: "json" } }
       );
-      return (
-        res?.data?.display_name ||
-        `Lat ${lat.toFixed(5)}, Lng ${lng.toFixed(5)}`
-      );
+      return res?.data?.display_name;
     } catch {
       return `Lat ${lat.toFixed(5)}, Lng ${lng.toFixed(5)}`;
     }
@@ -137,12 +272,7 @@ export default function WebMap({
     const { latitude, longitude } = e.nativeEvent.coordinate;
     const label = await reverseGeocode(latitude, longitude);
 
-    onSelect?.({
-      text: label,
-      lat: latitude,
-      lng: longitude,
-    });
-
+    onSelect?.({ text: label, lat: latitude, lng: longitude });
     focusTo(latitude, longitude);
   };
 
@@ -169,7 +299,10 @@ export default function WebMap({
         initialRegion={region}
         onPress={handlePress}
       >
-        {/* INCIDENT MARKERS */}
+        {renderMongoBarangayBoundaries()}
+        {showBarangays && renderBarangayBoundaries()}
+        {renderJaenBoundary()}
+
         {incidents.map((incident) => {
           const lat = Number(incident?.latitude);
           const lng = Number(incident?.longitude);
@@ -196,51 +329,11 @@ export default function WebMap({
                   </Text>
                   <Text>Status: {incident.status}</Text>
                   <Text>Severity: {incident.level}</Text>
-                  {!!incident.location && <Text>{incident.location}</Text>}
-                  {!!incident.description && (
-                    <Text>{incident.description}</Text>
-                  )}
-                  {!!incident?.image?.fileUrl && (
-                    <Image
-                      source={{ uri: incident.image.fileUrl }}
-                      style={styles.preview}
-                    />
-                  )}
                 </View>
               </Callout>
             </Marker>
           );
         })}
-
-        {/* SELECTED MARKER */}
-        {!!selected?.lat && (
-          <Marker
-            coordinate={{
-              latitude: selected.lat,
-              longitude: selected.lng,
-            }}
-          >
-            <Animated.Image
-              source={MarkerImages.selected}
-              style={[styles.selected, { transform: [{ scale }] }]}
-            />
-          </Marker>
-        )}
-
-        {/* USER LOCATION */}
-        {!!userLocation?.lat && (
-          <Marker
-            coordinate={{
-              latitude: userLocation.lat,
-              longitude: userLocation.lng,
-            }}
-          >
-            <Image source={MarkerImages.default} style={styles.user} />
-          </Marker>
-        )}
-
-        {/* ✅ JAEN MUNICIPAL OUTLINE — ADDED */}
-        {renderJaenBoundary()}
       </MapView>
     </View>
   );

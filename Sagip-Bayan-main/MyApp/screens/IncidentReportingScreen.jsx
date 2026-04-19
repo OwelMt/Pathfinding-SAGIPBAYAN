@@ -309,6 +309,7 @@ export default function IncidentReportScreen({ navigation }) {
       <View style={styles.webFrame}>
         <View style={styles.phone}>
           <View style={[styles.mapContainer, { flex: 1 }]}>
+
             <WebMap
               selected={{
                 lat: incidentReports.latitude,
@@ -316,6 +317,7 @@ export default function IncidentReportScreen({ navigation }) {
                 label: incidentReports.location,
               }}
               userLocation={userLocation}
+              showBarangays={true}
               onSelect={(obj) => {
                 setIncidentReports((prev) => ({
                   ...prev,
