@@ -1,31 +1,25 @@
-// screens/SignUp.jsx
-
-import { useState, useEffect } from "react";
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+import { useState, useEffect, useRef } from "react";
+import { Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Location from "expo-location";
-import api from "../lib/api";
 
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
+
+import api from "../lib/api";
 import StepPersonal from "./signup/StepPersonal";
 import StepSecurity from "./signup/StepSecurity";
 import StepMobile from "./signup/StepMobile";
 import SignUpHeader from "./signup/SignUpHeader";
 
-/* ================= CONSTANTS ================= */
-
 const JAEN_CENTER = { lat: 15.3383, lng: 120.9141 };
 const MAX_DISTANCE_KM = 5;
-
-/* ================= COMPONENT ================= */
 
 export default function SignUp({ navigation }) {
   const [step, setStep] = useState(0);
 
-  /* ===== FORM DATA ===== */
+  const scrollRef = useRef(null);
+
+  /* FORM */
   const [fName, setFName] = useState("");
   const [lName, setLName] = useState("");
   const [username, setUsername] = useState("");
@@ -36,30 +30,14 @@ export default function SignUp({ navigation }) {
   const [address, setAddress] = useState("");
   const [birthdate, setBirthdate] = useState("");
 
-  /* ===== GEO DEBUG (✅ PERSISTS ACROSS STEPS) ===== */
+  const [errors, setErrors] = useState({ password: "", confirmPassword: "" });
+
   const [geoDebug, setGeoDebug] = useState(false);
 
-  /* ===== LOCATION ===== */
   const [location, setLocation] = useState(null);
   const [permission, setPermission] = useState(null);
 
-  /* ================= HELPERS ================= */
-
-  const toRad = (v) => (v * Math.PI) / 180;
-  const getDistanceKm = (a, b) => {
-    const R = 6371;
-    const dLat = toRad(b.lat - a.lat);
-    const dLng = toRad(b.lng - a.lng);
-    const x =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(toRad(a.lat)) *
-        Math.cos(toRad(b.lat)) *
-        Math.sin(dLng / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-  };
-
-  /* ================= LOCATION ================= */
-
+  /* LOCATION */
   useEffect(() => {
     (async () => {
       const { status } =
@@ -76,16 +54,32 @@ export default function SignUp({ navigation }) {
     })();
   }, []);
 
-  /* ================= NAV ================= */
+  const toRad = (v) => (v * Math.PI) / 180;
+
+  const getDistanceKm = (a, b) => {
+    const R = 6371;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+
+    const x =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(a.lat)) *
+        Math.cos(toRad(b.lat)) *
+        Math.sin(dLng / 2) ** 2;
+
+    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  };
 
   const next = () => setStep((s) => s + 1);
   const back = () =>
     step === 0 ? navigation.goBack() : setStep((s) => s - 1);
 
-  /* ================= FINAL SUBMIT ================= */
+  /* GLOBAL FOCUS HANDLER (KEY FIX) */
+  const handleFocus = (ref) => {
+    scrollRef.current?.scrollToFocusedInput(ref);
+  };
 
   const submit = async () => {
-    // ✅ Location check ONLY if debug OFF
     if (!geoDebug) {
       if (permission !== "granted" || !location) {
         Alert.alert("Location Required");
@@ -94,10 +88,7 @@ export default function SignUp({ navigation }) {
 
       const dist = getDistanceKm(location, JAEN_CENTER);
       if (dist > MAX_DISTANCE_KM) {
-        Alert.alert(
-          "Outside Service Area",
-          "Registration is only allowed in Jaen."
-        );
+        Alert.alert("Outside Service Area");
         return;
       }
     }
@@ -122,11 +113,9 @@ export default function SignUp({ navigation }) {
     }
   };
 
-  /* ================= STEPS ================= */
-
   const pages = [
     <StepPersonal
-      key="personal"
+      key="p1"
       fName={fName}
       lName={lName}
       username={username}
@@ -136,20 +125,28 @@ export default function SignUp({ navigation }) {
       geoDebug={geoDebug}
       onToggleGeoDebug={() => setGeoDebug((v) => !v)}
       onNext={next}
+      onFocus={handleFocus}
     />,
 
-    <StepSecurity
-      key="security"
-      password={password}
-      confirmPassword={confirmPassword}
-      onPasswordChange={setPassword}
-      onConfirmChange={setConfirmPassword}
-      onNext={next}
-      onBack={back}
-    />,
+   <StepSecurity
+  key="p2"
+  password={password}
+  confirmPassword={confirmPassword}
+  
+  // Pass the error states
+  passwordError={errors.password}
+  confirmPasswordError={errors.confirmPassword}
+  setErrors={setErrors} // Make sure setErrors is defined in parent!
+  
+  onPasswordChange={setPassword}
+  onConfirmChange={setConfirmPassword}
+  onNext={next}
+  onBack={back}
+  onFocus={handleFocus} // Connect the scroll handler
+/>,
 
     <StepMobile
-      key="mobile"
+      key="p3"
       phone={phone}
       email={email}
       address={address}
@@ -160,20 +157,26 @@ export default function SignUp({ navigation }) {
       onBirthdateChange={setBirthdate}
       onSubmit={submit}
       onBack={back}
+      onFocus={handleFocus}
     />,
   ];
 
-  /* ================= RENDER ================= */
-
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      <KeyboardAvoidingView
+      <SignUpHeader step={step} onBack={back} />
+
+      <KeyboardAwareScrollView
+        ref={scrollRef}
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        contentContainerStyle={{ flexGrow: 1 }}
+        enableOnAndroid
+        keyboardShouldPersistTaps="handled"
+        extraScrollHeight={100}
+        bounces={false}
+        overScrollMode="never"
       >
-        <SignUpHeader step={step} onBack={back} />
         {pages[step]}
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

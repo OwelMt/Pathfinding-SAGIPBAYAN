@@ -64,12 +64,12 @@ export default StyleSheet.create({
 
   /* ===== CONTENT ===== */
 
-  pageContainer: {
-    flex: 1,
-    justifyContent: "flex-end",
-    alignItems: "center",
-  },
-
+pageContainer: {
+  flexGrow: 1,
+  justifyContent: "center",   // 👈 center vertically
+  alignItems: "center",
+  paddingHorizontal: 20,
+},
   logo: {
     width: width * 2.75,
     height: 180,
@@ -78,24 +78,20 @@ export default StyleSheet.create({
 
   /* ===== FULL-WIDTH PANEL ===== */
 
-  panel: {
-    width: "100%",
-    backgroundColor: "#E6E6E6",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 24,
-    paddingTop: 32,
+panel: {
+  width: "100%",
+  maxWidth: 400,              // 👈 keeps it clean on tablets
+  backgroundColor: "#fff",
+  padding: 24,
+  borderRadius: 20,
+  gap: 12,
 
-    // ensure panel sticks to bottom visually
-    minHeight: height * 0.55,
-
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: -6 },
-    elevation: 10,
-  },
-
+  // subtle shadow (modern UI)
+  elevation: 5,
+  shadowColor: "#000",
+  shadowOpacity: 0.1,
+  shadowRadius: 10,
+},
   panelTitle: {
     textAlign: "center",
     fontSize: 16,

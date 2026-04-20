@@ -9,9 +9,9 @@ import {
   Platform,
   KeyboardAvoidingView,
   SafeAreaView,
-  ScrollView,
 } from "react-native";
 
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../lib/api";
 import styles, { COLORS } from "../Designs/LogIn";
@@ -22,14 +22,40 @@ export default function LogIn({ navigation }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
+  const usernameRef = React.useRef(null);
+const passwordRef = React.useRef(null);
+
+  // validation errors (ONLY ON SUBMIT)
+  const [usernameError, setUsernameError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+
   const { setUser } = useContext(UserContext);
 
-  const sanitizeInput = (text) =>
-    text.replace(/[^a-zA-Z0-9]/g, "");
+  /* ================= SANITIZE ================= */
+  const sanitizeUsername = (text) => text.replace(/[^a-zA-Z0-9]/g, "");
+
+  /* ================= VALIDATION ================= */
+  const validateUsername = (text) => {
+    if (!text) return "Username is required";
+    if (text.length < 3) return "Minimum 3 characters";
+    return "";
+  };
+
+  const validatePassword = (text) => {
+    if (!text) return "Password is required";
+    if (text.length < 6) return "Minimum 6 characters";
+    return "";
+  };
 
   /* ================= LOGIN ================= */
-  const handleLogin = () => {
+   const handleLogin = () => {
     setError("");
+
+    // HCI validation
+    if (!username || !password) {
+      setError("Make sure you enter all the fields");
+      return;
+    }
 
     api
       .post("/user/login", { username, password })
@@ -37,17 +63,15 @@ export default function LogIn({ navigation }) {
         const data = res.data;
 
         if (data.twoFactor) {
-          // ✅ Two-factor flow
           navigation.navigate("VerifyOtp", {
             userId: data.userId,
             email: data.email,
           });
           api.post("/user/send-otp", { email: data.email });
         } else {
-          // ✅ Store FULL backend user object (includes avatar)
           setUser({
             ...data.user,
-            id: data.user._id, // normalize ID once
+            id: data.user._id,
           });
 
           navigation.replace("AppShell");
@@ -55,10 +79,11 @@ export default function LogIn({ navigation }) {
           setPassword("");
         }
       })
-      .catch((err) => {
-        setError(err.response?.data?.message || "Login failed");
+      .catch(() => {
+        setError("invalid username or password");
       });
   };
+
 
   /* ================= NAV ================= */
   const handleGoToSignup = async () => {
@@ -72,52 +97,66 @@ export default function LogIn({ navigation }) {
     }
   };
 
+  /* ================= SANITIZE INPUT ================= */
+  const handleUsernameChange = (t) => {
+    const clean = sanitizeUsername(t.trimStart());
+    setUsername(clean);
+    setUsernameError(""); // remove live validation
+  };
+
+  const handlePasswordChange = (t) => {
+    setPassword(t);
+    setPasswordError(""); // remove live validation
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
-      {/* BACKGROUND STRIPES */}
-      <View style={styles.stripeTop} />
-      <View style={styles.stripeMid} />
-      <View style={styles.stripeMid2} />
-      <View style={styles.stripeBottom} />
-
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+        <KeyboardAwareScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          enableOnAndroid={true}
+          keyboardShouldPersistTaps="handled"
+          extraScrollHeight={0}   // 👈 IMPORTANT (remove jump difference)
+          enableAutomaticScroll={false} // 👈 IMPORTANT (prevents uneven behavior)
+        >
           <View style={styles.pageContainer}>
 
-            {/* WHITE LOGO */}
             <Image
               source={require("../stores/assets/sagipbayanlogowhite.png")}
               style={styles.logo}
               resizeMode="contain"
             />
 
-            {/* FULL-WIDTH PANEL */}
             <View style={styles.panel}>
               <Text style={styles.panelTitle}>LOG IN ACCOUNT</Text>
 
-              <TextInput
+             <TextInput
+                ref={usernameRef}
                 style={styles.input}
                 placeholder="Username"
-                placeholderTextColor={COLORS.placeholder}
                 value={username}
                 autoCapitalize="none"
-                onChangeText={(t) =>
-                  setUsername(sanitizeInput(t.trimStart()))
-                }
+                onFocus={() => {
+                  usernameRef.current?.focus();
+                }}
+                onChangeText={handleUsernameChange}
               />
-
-              <TextInput
+             
+             <TextInput
+                ref={passwordRef}
                 style={styles.input}
                 placeholder="Password"
-                placeholderTextColor={COLORS.placeholder}
                 secureTextEntry
                 value={password}
-                onChangeText={setPassword}
+                onFocus={() => {
+                  passwordRef.current?.focus();
+                }}
+                onChangeText={handlePasswordChange}
               />
-
+          
               {error ? <Text style={styles.error}>{error}</Text> : null}
 
               <TouchableOpacity
@@ -142,7 +181,7 @@ export default function LogIn({ navigation }) {
             </View>
 
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

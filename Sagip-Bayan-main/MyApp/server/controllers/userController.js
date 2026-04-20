@@ -25,57 +25,86 @@ const registerUser = async (req, res) => {
       location,
     } = req.body || {};
 
-    if (
-      !fname ||
-      !lname ||
-      !username ||
-      !password ||
-      !email ||
-      !phone
-    ) {
-      return res.status(400).json({
-        error: "Missing required fields",
-      });
+    // 1. Basic Field Validation
+    if (!fname || !lname || !username || !password || !email || !phone) {
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
-    /* ✅ FORMAT CHECKS */
+    // 2. Advanced Email Format Validation
+    // This regex ensures it has a valid provider and a TLD (like .com or .ph)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: "Please enter a valid email address" });
+    }
+
+    // 3. Password Length Check
     if (password.length < 8) {
-      return res.status(400).json({
-        error: "Password must be at least 8 characters",
-      });
+      return res.status(400).json({ error: "Password must be at least 8 characters" });
     }
 
-    /* ✅ ✅ ✅ ONLY FIX */
+    // 4. PREVENT DUPLICATION
+    const sanitizedEmail = email.toLowerCase().trim();
+    const sanitizedUsername = username.toLowerCase().trim();
+
+    const existingUser = await UserModel.findOne({
+      $or: [
+        { email: sanitizedEmail },
+        { username: sanitizedUsername },
+        { phone: phone }
+      ]
+    });
+
+    if (existingUser) {
+      let field = "User";
+      if (existingUser.email === sanitizedEmail) field = "Email";
+      else if (existingUser.username === sanitizedUsername) field = "Username";
+      else if (existingUser.phone === phone) field = "Phone number";
+      
+      return res.status(400).json({ error: `${field} is already registered` });
+    }
+
+    // 5. Logic for Hashing and Token
     const hashedPassword = await bcrypt.hash(password, 10);
     const verificationToken = crypto.randomBytes(32).toString("hex");
 
+    // 6. Create New User Instance (But don't save yet if you want to be extra safe)
     const newUser = new UserModel({
       ...req.body,
+      email: sanitizedEmail,
+      username: sanitizedUsername,
       password: hashedPassword,
       isVerified: false,
       verificationToken,
       verificationTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
     });
 
-    const user = await newUser.save();
+    // 7. THE EXISTENCE TEST (Dispatch Email)
+    const verificationLink = `http://192.168.1.8:8000/user/verify/${verificationToken}`;
 
-    const verificationLink =
-      `http://192.168.1.8:8000/user/verify/${verificationToken}`;
+    try {
+      // We try to send the email BEFORE or DURING the save process. 
+      // If the email provider (SMTP) rejects the address, this will throw an error.
+      await sendVerificationEmail(sanitizedEmail, verificationLink);
+    } catch (mailError) {
+      console.error("Mail Dispatch Error:", mailError);
+      return res.status(400).json({ 
+        error: "We couldn't send an email to that address. Please check if the email exists." 
+      });
+    }
 
-    await sendVerificationEmail(user.email, verificationLink);
+    // 8. Save to Database after successful email dispatch
+    await newUser.save();
 
     res.status(201).json({
-      message: "Registration successful. Please verify your email.",
+      message: "Registration successful. Please check your inbox to verify your email.",
     });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Registration failed" });
+    console.error("Internal Server Error:", err);
+    res.status(500).json({ error: "An unexpected error occurred during registration" });
   }
 };
 
-/* =========================
-   VERIFY EMAIL
-========================= */
 /* =========================
    VERIFY EMAIL
 ========================= */
@@ -84,27 +113,31 @@ const verifyEmail = (req, res) => {
 
   UserModel.findOne({
     verificationToken: token,
-    verificationTokenExpires: { $gt: Date.now() }
+    verificationTokenExpires: { $gt: Date.now() } // Token must not be expired
   })
     .then((user) => {
       if (!user) {
+        // Return 400 so frontend knows the link is dead/wrong
         return res.status(400).send("Invalid or expired verification link");
       }
 
+      // Update verification status
       user.isVerified = true;
+      
+      // IMPORTANT: Remove tokens so they can't be used again
       user.verificationToken = undefined;
       user.verificationTokenExpires = undefined;
+      
       return user.save();
     })
     .then(() => {
       res.send("Email verified successfully. You can now log in.");
     })
     .catch((err) => {
-      console.error(err);
-      res.status(500).send("Verification error");
+      console.error("Verification Error:", err);
+      res.status(500).send("An error occurred during verification");
     });
 };
-
 /* =========================
    USERS
 ========================= */
