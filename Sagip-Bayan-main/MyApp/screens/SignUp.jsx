@@ -30,6 +30,8 @@ export default function SignUp({ navigation }) {
   const [address, setAddress] = useState("");
   const [birthdate, setBirthdate] = useState("");
 
+  const [serverError, setServerError] = useState("");
+
   const [errors, setErrors] = useState({ password: "", confirmPassword: "" });
 
   const [geoDebug, setGeoDebug] = useState(false);
@@ -79,39 +81,52 @@ export default function SignUp({ navigation }) {
     scrollRef.current?.scrollToFocusedInput(ref);
   };
 
-  const submit = async () => {
-    if (!geoDebug) {
-      if (permission !== "granted" || !location) {
-        Alert.alert("Location Required");
-        return;
-      }
 
-      const dist = getDistanceKm(location, JAEN_CENTER);
-      if (dist > MAX_DISTANCE_KM) {
-        Alert.alert("Outside Service Area");
-        return;
-      }
+
+const submit = async () => {
+  // Clear previous errors
+  setServerError("");
+
+  if (!geoDebug) {
+    if (permission !== "granted" || !location) {
+      Alert.alert("Location Required");
+      return;
     }
 
-    try {
-      await api.post("/user/register", {
-        fname: fName,
-        lname: lName,
-        username,
-        password,
-        birthdate,
-        phone,
-        email,
-        address,
-        location,
-      });
-
-      Alert.alert("Success", "Check your email to verify.");
-      navigation.replace("LogIn");
-    } catch {
-      Alert.alert("Signup failed");
+    const dist = getDistanceKm(location, JAEN_CENTER);
+    if (dist > MAX_DISTANCE_KM) {
+      Alert.alert("Outside Service Area");
+      return;
     }
-  };
+  }
+
+  try {
+    await api.post("/user/register", {
+      fname: fName,
+      lname: lName,
+      username,
+      password,
+      birthdate,
+      phone,
+      email,
+      address,
+      location,
+    });
+
+    Alert.alert("Success", "Check your email to verify.");
+    navigation.replace("LogIn");
+  } catch (error) {
+    // 1. Extract the specific error message from the backend
+    // If using Axios, it's error.response.data.error
+    const backendMessage = error.response?.data?.error || "An unexpected error occurred";
+
+    // 2. Set the state so StepMobile.jsx can highlight the inputs
+    setServerError(backendMessage);
+
+    // 3. Show the specific message in the Alert
+    Alert.alert("Signup Failed", backendMessage);
+  }
+};
 
   const pages = [
     <StepPersonal

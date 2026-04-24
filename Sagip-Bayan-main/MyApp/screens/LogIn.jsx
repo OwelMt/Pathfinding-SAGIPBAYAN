@@ -1,5 +1,5 @@
 // screens/LogIn.jsx
-import React, { useState, useContext } from "react";
+import React, { useState, useContext, useRef } from "react";
 import {
   TextInput,
   View,
@@ -9,6 +9,7 @@ import {
   Platform,
   KeyboardAvoidingView,
   SafeAreaView,
+  Alert
 } from "react-native";
 
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
@@ -22,70 +23,52 @@ export default function LogIn({ navigation }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  const usernameRef = React.useRef(null);
-const passwordRef = React.useRef(null);
-
-  // validation errors (ONLY ON SUBMIT)
-  const [usernameError, setUsernameError] = useState("");
-  const [passwordError, setPasswordError] = useState("");
+  const usernameRef = useRef(null);
+  const passwordRef = useRef(null);
 
   const { setUser } = useContext(UserContext);
 
   /* ================= SANITIZE ================= */
   const sanitizeUsername = (text) => text.replace(/[^a-zA-Z0-9]/g, "");
 
-  /* ================= VALIDATION ================= */
-  const validateUsername = (text) => {
-    if (!text) return "Username is required";
-    if (text.length < 3) return "Minimum 3 characters";
-    return "";
-  };
-
-  const validatePassword = (text) => {
-    if (!text) return "Password is required";
-    if (text.length < 6) return "Minimum 6 characters";
-    return "";
-  };
-
-  /* ================= LOGIN ================= */
-   const handleLogin = () => {
+  /* ================= LOGIN LOGIC ================= */
+  const handleLogin = async () => {
     setError("");
 
-    // HCI validation
     if (!username || !password) {
-      setError("Make sure you enter all the fields");
+      setError("Please enter both username and password");
       return;
     }
 
-    api
-      .post("/user/login", { username, password })
-      .then((res) => {
-        const data = res.data;
+    try {
+      const res = await api.post("/user/login", { username, password });
+      const data = res.data;
 
-        if (data.twoFactor) {
-          navigation.navigate("VerifyOtp", {
-            userId: data.userId,
-            email: data.email,
-          });
-          api.post("/user/send-otp", { email: data.email });
-        } else {
-          setUser({
-            ...data.user,
-            id: data.user._id,
-          });
+      if (data.twoFactor) {
+        // Send OTP first, then navigate
+        await api.post("/user/send-otp", { email: data.email });
+        navigation.navigate("VerifyOtp", {
+          userId: data.userId,
+          email: data.email,
+        });
+      } else {
+        setUser({
+          ...data.user,
+          id: data.user._id,
+        });
 
-          navigation.replace("AppShell");
-          setUsername("");
-          setPassword("");
-        }
-      })
-      .catch(() => {
-        setError("invalid username or password");
-      });
+        navigation.replace("AppShell");
+        setUsername("");
+        setPassword("");
+      }
+    } catch (err) {
+      // ✅ Captures specific error from backend (e.g., "User not found" or "Incorrect password")
+      const backendMessage = err.response?.data?.error || "Invalid username or password";
+      setError(backendMessage);
+    }
   };
 
-
-  /* ================= NAV ================= */
+  /* ================= NAVIGATION ================= */
   const handleGoToSignup = async () => {
     try {
       const accepted = await AsyncStorage.getItem("privacyAccepted");
@@ -97,16 +80,21 @@ const passwordRef = React.useRef(null);
     }
   };
 
-  /* ================= SANITIZE INPUT ================= */
+  const handleForgotPassword = () => {
+    // Navigate to your Forgot Password screen
+    navigation.navigate("ForgotPassword"); 
+  };
+
+  /* ================= INPUT HANDLERS ================= */
   const handleUsernameChange = (t) => {
     const clean = sanitizeUsername(t.trimStart());
     setUsername(clean);
-    setUsernameError(""); // remove live validation
+    if (error) setError(""); 
   };
 
   const handlePasswordChange = (t) => {
     setPassword(t);
-    setPasswordError(""); // remove live validation
+    if (error) setError("");
   };
 
   return (
@@ -116,7 +104,7 @@ const passwordRef = React.useRef(null);
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <KeyboardAwareScrollView
-          contentContainerStyle={{ flexGrow: 1 }}
+           contentContainerStyle={{ flexGrow: 1 }}
           enableOnAndroid={true}
           keyboardShouldPersistTaps="handled"
           extraScrollHeight={0}   // 👈 IMPORTANT (remove jump difference)
@@ -133,29 +121,39 @@ const passwordRef = React.useRef(null);
             <View style={styles.panel}>
               <Text style={styles.panelTitle}>LOG IN ACCOUNT</Text>
 
-             <TextInput
+              <TextInput
                 ref={usernameRef}
                 style={styles.input}
                 placeholder="Username"
+                placeholderTextColor={COLORS.placeholder}
                 value={username}
                 autoCapitalize="none"
-                onFocus={() => {
-                  usernameRef.current?.focus();
-                }}
+                returnKeyType="next"
+                onSubmitEditing={() => passwordRef.current?.focus()}
                 onChangeText={handleUsernameChange}
               />
-             
-             <TextInput
+              
+              <TextInput
                 ref={passwordRef}
                 style={styles.input}
                 placeholder="Password"
+                placeholderTextColor={COLORS.placeholder}
                 secureTextEntry
                 value={password}
-                onFocus={() => {
-                  passwordRef.current?.focus();
-                }}
+                returnKeyType="done"
+                onSubmitEditing={handleLogin}
                 onChangeText={handlePasswordChange}
               />
+
+              {/* ✅ Forgot Password Link - UI Friendly placement */}
+              <TouchableOpacity 
+                onPress={handleForgotPassword}
+                style={{ alignSelf: 'flex-end', marginBottom: 15, marginTop: -5 }}
+              >
+                <Text style={{ color: COLORS.placeholder, fontSize: 14, textDecorationLine: 'underline' }}>
+                  Forgot Password?
+                </Text>
+              </TouchableOpacity>
           
               {error ? <Text style={styles.error}>{error}</Text> : null}
 

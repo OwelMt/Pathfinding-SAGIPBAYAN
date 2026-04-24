@@ -30,8 +30,7 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // 2. Advanced Email Format Validation
-    // This regex ensures it has a valid provider and a TLD (like .com or .ph)
+    // 2. Email Format Validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ error: "Please enter a valid email address" });
@@ -42,7 +41,7 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ error: "Password must be at least 8 characters" });
     }
 
-    // 4. PREVENT DUPLICATION
+    // 4. PREVENT DUPLICATION (Crucial for your mobile Alert messages)
     const sanitizedEmail = email.toLowerCase().trim();
     const sanitizedUsername = username.toLowerCase().trim();
 
@@ -55,19 +54,22 @@ const registerUser = async (req, res) => {
     });
 
     if (existingUser) {
-      let field = "User";
-      if (existingUser.email === sanitizedEmail) field = "Email";
-      else if (existingUser.username === sanitizedUsername) field = "Username";
-      else if (existingUser.phone === phone) field = "Phone number";
-      
-      return res.status(400).json({ error: `${field} is already registered` });
+      if (existingUser.email === sanitizedEmail) {
+        return res.status(400).json({ error: "Email has been already used" });
+      } 
+      if (existingUser.username === sanitizedUsername) {
+        return res.status(400).json({ error: "User existed" });
+      } 
+      if (existingUser.phone === phone) {
+        return res.status(400).json({ error: "Phone number already registered" });
+      }
     }
 
-    // 5. Logic for Hashing and Token
+    // 5. Hash Password & Create Token
     const hashedPassword = await bcrypt.hash(password, 10);
     const verificationToken = crypto.randomBytes(32).toString("hex");
 
-    // 6. Create New User Instance (But don't save yet if you want to be extra safe)
+    // 6. Create and Save User
     const newUser = new UserModel({
       ...req.body,
       email: sanitizedEmail,
@@ -75,33 +77,40 @@ const registerUser = async (req, res) => {
       password: hashedPassword,
       isVerified: false,
       verificationToken,
-      verificationTokenExpires: Date.now() + 24 * 60 * 60 * 1000,
+      verificationTokenExpires: Date.now() + 24 * 60 * 60 * 1000, // 24 Hours
     });
 
-    // 7. THE EXISTENCE TEST (Dispatch Email)
-    const verificationLink = `http://192.168.1.8:8000/user/verify/${verificationToken}`;
+    const user = await newUser.save();
 
+    // 7. Send Verification Email
+    const verificationLink = `http://192.168.1.209:8000/user/verify/${verificationToken}`;
+    
     try {
-      // We try to send the email BEFORE or DURING the save process. 
-      // If the email provider (SMTP) rejects the address, this will throw an error.
-      await sendVerificationEmail(sanitizedEmail, verificationLink);
-    } catch (mailError) {
-      console.error("Mail Dispatch Error:", mailError);
+        await sendVerificationEmail(user.email, verificationLink);
+    } catch (emailErr) {
+        console.error("Detailed Error:", err);
+
+    // ✅ HANDLE MONGODB DUPLICATE KEY ERROR (E11000)
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyValue)[0];
       return res.status(400).json({ 
-        error: "We couldn't send an email to that address. Please check if the email exists." 
+        error: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists.` 
       });
     }
 
-    // 8. Save to Database after successful email dispatch
-    await newUser.save();
+    // Default fallback
+    res.status(500).json({ error: "An internal server error occurred" });
+        // but for now, we'll let the user know.
+    }
 
-    res.status(201).json({
-      message: "Registration successful. Please check your inbox to verify your email.",
+    return res.status(201).json({
+      message: "Registration successful. Please verify your email.",
     });
 
   } catch (err) {
-    console.error("Internal Server Error:", err);
-    res.status(500).json({ error: "An unexpected error occurred during registration" });
+    console.error("Registration Error:", err);
+    // This handles database connection issues or schema validation errors
+    return res.status(500).json({ error: "An internal server error occurred" });
   }
 };
 
@@ -113,29 +122,24 @@ const verifyEmail = (req, res) => {
 
   UserModel.findOne({
     verificationToken: token,
-    verificationTokenExpires: { $gt: Date.now() } // Token must not be expired
+    verificationTokenExpires: { $gt: Date.now() }
   })
     .then((user) => {
       if (!user) {
-        // Return 400 so frontend knows the link is dead/wrong
         return res.status(400).send("Invalid or expired verification link");
       }
 
-      // Update verification status
       user.isVerified = true;
-      
-      // IMPORTANT: Remove tokens so they can't be used again
       user.verificationToken = undefined;
       user.verificationTokenExpires = undefined;
-      
       return user.save();
     })
     .then(() => {
       res.send("Email verified successfully. You can now log in.");
     })
     .catch((err) => {
-      console.error("Verification Error:", err);
-      res.status(500).send("An error occurred during verification");
+      console.error(err);
+      res.status(500).send("Verification error");
     });
 };
 /* =========================

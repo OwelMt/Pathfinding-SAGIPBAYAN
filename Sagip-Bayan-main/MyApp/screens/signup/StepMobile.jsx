@@ -20,7 +20,7 @@ export default function StepMobile({
   onEmailChange,
   onBack,
   onSubmit,
-  serverError, // New prop to pass errors from the API back to the UI
+  serverError, 
 }) {
   const { width } = useWindowDimensions();
   const styles = useMemo(() => createStyles(width), [width]);
@@ -32,11 +32,9 @@ export default function StepMobile({
   // --- Handlers & Validation ---
 
   const handlePhone = (t) => {
-    // Sanitization: Only allow numbers
     const clean = t.replace(/[^0-9]/g, "");
     onPhoneChange(clean);
 
-    // Validation Logic (Matches PH format)
     if (!clean) {
       setLocalErrors((p) => ({ ...p, phone: "Required" }));
     } else if (!clean.startsWith("09")) {
@@ -52,7 +50,6 @@ export default function StepMobile({
     const clean = t.replace(/\s/g, "").toLowerCase();
     onEmailChange(clean);
 
-    // Advanced Regex: Requires a domain with a dot (e.g., .com, .net, .org)
     const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
 
     if (!clean) {
@@ -65,7 +62,7 @@ export default function StepMobile({
       setLocalErrors((p) => ({ ...p, email: "" }));
     }
   };
-  // Submission Guard: Prevents hitting the API if local rules aren't met
+
   const isFormValid = 
     phone.length === 11 && 
     phone.startsWith("09") && 
@@ -82,7 +79,6 @@ export default function StepMobile({
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={[styles.contentWrapper, { flex: 1, justifyContent: "flex-start" }]}>
             
-            {/* ILLUSTRATION */}
             <View style={styles.logoContainer}>
               <Image
                 source={require("../../stores/assets/application3.png")}
@@ -91,7 +87,6 @@ export default function StepMobile({
               />
             </View>
 
-            {/* HEADER */}
             <View style={styles.headerContainer}>
               <Text style={styles.title}>Mobile Registration</Text>
               <Text style={styles.subtitle}>
@@ -99,14 +94,16 @@ export default function StepMobile({
               </Text>
             </View>
 
-            {/* FORM */}
             <View style={styles.formWrapper}>
               
               {/* Phone Input */}
               <View style={styles.field}>
                 <TextInput
                   ref={phoneRef}
-                  style={[styles.input, (localErrors.phone || (serverError && serverError.includes("Phone"))) && styles.inputError]}
+                  style={[
+                    styles.input, 
+                    (localErrors.phone || (serverError && serverError.toLowerCase().includes("phone"))) && styles.inputError
+                  ]}
                   placeholder="Phone Number (09XXXXXXXXX)"
                   placeholderTextColor={COLORS.placeholder}
                   keyboardType="phone-pad"
@@ -117,8 +114,7 @@ export default function StepMobile({
                   onSubmitEditing={() => emailRef.current?.focus()}
                   blurOnSubmit={false}
                 />
-                {/* Prioritize local errors, fallback to server errors */}
-                {(localErrors.phone || (serverError && serverError.includes("Phone"))) ? (
+                {(localErrors.phone || (serverError && serverError.toLowerCase().includes("phone"))) ? (
                   <Text style={styles.error}>{localErrors.phone || serverError}</Text>
                 ) : null}
               </View>
@@ -127,7 +123,10 @@ export default function StepMobile({
               <View style={styles.field}>
                 <TextInput
                   ref={emailRef}
-                  style={[styles.input, (localErrors.email || (serverError && serverError.includes("Email"))) && styles.inputError]}
+                  style={[
+                    styles.input, 
+                    (localErrors.email || (serverError && serverError.toLowerCase().includes("email"))) && styles.inputError
+                  ]}
                   placeholder="Email Address"
                   placeholderTextColor={COLORS.placeholder}
                   keyboardType="email-address"
@@ -137,13 +136,17 @@ export default function StepMobile({
                   returnKeyType="done"
                   onSubmitEditing={isFormValid ? onSubmit : Keyboard.dismiss}
                 />
-                {(localErrors.email || (serverError && serverError.includes("Email"))) ? (
+                {(localErrors.email || (serverError && serverError.toLowerCase().includes("email"))) ? (
                   <Text style={styles.error}>{localErrors.email || serverError}</Text>
                 ) : null}
               </View>
+
+              {/* Generic "User Existed" Message (for username collisions if applicable) */}
+              {serverError && serverError === "User existed" && (
+                <Text style={[styles.error, { textAlign: 'center' }]}>{serverError}</Text>
+              )}
             </View>
 
-            {/* ACTIONS */}
             <View style={[styles.actions, { marginTop: 30 }]}>
               <TouchableOpacity
                 style={[styles.button, !isFormValid && { opacity: 0.5 }]}
